@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Streamlit
+.streamlit/
+secrets.toml
+
+# Node/Next.js (if applicable)
+node_modules/
+.next/
+out/
+build/
+
+# System
+.DS_Store
+
+# Data (Optional - depending on if user wants these tracked)
+# watchlist.csv - Keeping tracked as default config
+bookmarks.csv

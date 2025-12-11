@@ -1,0 +1,44 @@
+:root {
+  --primary: 260 100% 70%;
+  --secondary: 190 100% 70%;
+  --background: 240 20% 10%;
+  --foreground: 0 0% 100%;
+  --card-bg: 240 20% 15%;
+  --card-border: 240 20% 25%;
+  --input-bg: 240 20% 20%;
+  --radius: 12px;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-image: 
+    radial-gradient(circle at 10% 20%, hsla(var(--primary), 0.15), transparent 40%),
+    radial-gradient(circle at 90% 80%, hsla(var(--secondary), 0.15), transparent 40%);
+}
+
+h1, h2, h3, p {
+  margin: 0;
+}
+
+input, button {
+  font-family: inherit;
+}
+
+.glass-panel {
+  background: hsla(var(--card-bg), 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid hsla(var(--card-border), 0.8);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}

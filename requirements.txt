@@ -1,0 +1,7 @@
+streamlit
+yfinance
+gnews
+finvizfinance
+pandas
+watchdog
+st-gsheets-connection
