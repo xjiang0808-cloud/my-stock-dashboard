@@ -60,7 +60,7 @@ def load_bookmarks():
     """Loads bookmarks from Google Sheets."""
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(worksheet="stock_bookmarks")
+        df = conn.read(worksheet="stock_bookmarks", ttl=0)
         if df.empty:
             return []
         return df.to_dict('records')
@@ -74,7 +74,7 @@ def save_bookmark(article, ticker, category):
     """Saves a news article to bookmarks in Google Sheets."""
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(worksheet="stock_bookmarks")
+        df = conn.read(worksheet="stock_bookmarks", ttl=0)
         
         # Deduplication check by URL
         # GSheets read returns a DF, if empty or first time, might be issue if no columns.
@@ -113,7 +113,7 @@ def remove_bookmark(url):
     """Removes a bookmark by URL from Google Sheets."""
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(worksheet="stock_bookmarks")
+        df = conn.read(worksheet="stock_bookmarks", ttl=0)
         
         if df.empty or 'URL' not in df.columns:
             return
@@ -345,9 +345,9 @@ def main():
         
         for ticker, items in bookmarks_by_ticker.items():
             with st.sidebar.expander(f"{ticker} ({len(items)})"):
-                for item in items:
+                for i, item in enumerate(items):
                     st.sidebar.markdown(f"[{item['Title']}]({item['URL']})")
-                    if st.sidebar.button("🗑️ Remove", key=f"del_{item['URL']}"):
+                    if st.sidebar.button("🗑️ Remove", key=f"del_{i}_{item['URL']}"):
                         remove_bookmark(item['URL'])
                         st.rerun()
     else:
