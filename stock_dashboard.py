@@ -9,33 +9,52 @@ from gnews import GNews
 from streamlit_gsheets import GSheetsConnection
 
 # Constants
-WATCHLIST_FILE = 'watchlist.csv'
 TZ_SHANGHAI = pytz.timezone('Asia/Shanghai')
 
 # --- Helper Functions ---
 
-def load_watchlist():
-    """Loads the watchlist from a CSV file. Returns a list of tickers."""
-    if not os.path.exists(WATCHLIST_FILE):
-        return []
+def load_watchlist_df():
+    """Loads all watchlist data from Google Sheets."""
     try:
-        df = pd.read_csv(WATCHLIST_FILE, header=None)
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df = conn.read(worksheet="watchlist", ttl=0)
         if df.empty:
-            return []
-        # Assume first column contains tickers
-        tickers = df[0].dropna().astype(str).unique().tolist()
-        return sorted(tickers)
+            return pd.DataFrame(columns=['List_Name', 'Ticker', 'Note'])
+        return df
     except Exception as e:
-        st.error(f"Error loading watchlist: {e}")
-        return []
+        st.error(f"Error loading watchlist from GSheets: {e}")
+        return pd.DataFrame(columns=['List_Name', 'Ticker', 'Note'])
 
-def save_watchlist(tickers):
-    """Saves the list of tickers to the CSV file."""
+def add_stock_to_list(list_name, ticker, note=""):
+    """Adds a stock to a specific watchlist in GSheets."""
     try:
-        df = pd.DataFrame(tickers)
-        df.to_csv(WATCHLIST_FILE, index=False, header=False)
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df = conn.read(worksheet="watchlist", ttl=0)
+        
+        new_row = {
+            'List_Name': list_name,
+            'Ticker': ticker,
+            'Note': note
+        }
+        
+        # Check duplicates in the same list
+        if not df.empty:
+            exists = ((df['List_Name'] == list_name) & (df['Ticker'] == ticker)).any()
+            if exists:
+                st.toast(f"Ticker {ticker} already in {list_name}")
+                return
+
+        if df.empty:
+            updated_df = pd.DataFrame([new_row])
+        else:
+            updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            
+        conn.update(worksheet="watchlist", data=updated_df)
+        st.cache_data.clear()
+        st.toast(f"Added {ticker} to {list_name}")
+        
     except Exception as e:
-        st.error(f"Error saving watchlist: {e}")
+        st.error(f"Error saving to watchlist: {e}")
 
 def get_stock_price_data(ticker):
     """Fetches just the price data using yfinance."""
@@ -288,46 +307,60 @@ def main():
     st.set_page_config(page_title="US Stock Briefing", layout="wide")
 
     # --- Sidebar: Configure Watchlist ---
+    # --- Sidebar: Configure Watchlist ---
     st.sidebar.header("Manage Watchlist")
     
-    new_ticker = st.sidebar.text_input("Add Ticker (e.g., NVDA)").upper().strip()
-    if st.sidebar.button("Add"):
-        if new_ticker:
-            tickers = load_watchlist()
-            if new_ticker not in tickers:
-                tickers.append(new_ticker)
-                save_watchlist(tickers)
-                st.sidebar.success(f"Added {new_ticker}")
+    # Load all data
+    watchlist_df = load_watchlist_df()
+    
+    # 1. Feature: Watchlist Selector
+    all_lists = []
+    if not watchlist_df.empty and 'List_Name' in watchlist_df.columns:
+        all_lists = sorted(watchlist_df['List_Name'].unique().tolist())
+    
+    selected_list = st.sidebar.selectbox("📂 Select Watchlist", ["Select..."] + all_lists)
+    
+    # 2. Feature: Create New List
+    with st.sidebar.expander("➕ Create New List"):
+        new_list_name = st.text_input("New Watchlist Name")
+        first_ticker = st.text_input("First Ticker").upper().strip()
+        if st.button("Create List"):
+            if new_list_name and first_ticker:
+                if new_list_name in all_lists:
+                    st.warning("List name already exists.")
+                else:
+                    add_stock_to_list(new_list_name, first_ticker)
+                    st.rerun()
+            else:
+                st.warning("Please provide name and ticker.")
+
+    # 3. Feature: Add Stock to CURRENT List
+    if selected_list != "Select...":
+        st.sidebar.divider()
+        st.sidebar.subheader(f"Add to: {selected_list}")
+        add_ticker = st.sidebar.text_input("Ticker Symbol").upper().strip()
+        add_note = st.sidebar.text_input("Note (Optional)")
+        
+        if st.sidebar.button("Add Stock"):
+            if add_ticker:
+                add_stock_to_list(selected_list, add_ticker, add_note)
                 st.rerun()
             else:
-                st.sidebar.warning("Ticker already in watchlist")
+                st.warning("Enter a ticker symbol.")
 
-    uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
-    if uploaded_file is not None:
-        try:
-            df_upload = pd.read_csv(uploaded_file, header=None)
-            new_tickers = df_upload[0].dropna().astype(str).str.upper().tolist()
-            existing_tickers = load_watchlist()
-            combined = sorted(list(set(existing_tickers + new_tickers)))
-            save_watchlist(combined)
-            st.sidebar.success(f"Imported {len(new_tickers)} tickers")
-            st.rerun()
-        except Exception as e:
-            st.sidebar.error(f"Error reading CSV: {e}")
+    # Filter tickers for main dashboard
+    current_tickers = []
+    if selected_list != "Select..." and not watchlist_df.empty:
+        # Filter DF
+        active_df = watchlist_df[watchlist_df['List_Name'] == selected_list]
+        if 'Ticker' in active_df.columns:
+            current_tickers = active_df['Ticker'].dropna().unique().tolist()
+            
+    # Helper for delete (optional but good for cleanup) - keeping it simple for now as requested
+    # Just show list stats
+    if selected_list != "Select...":
+         st.sidebar.caption(f"Viewing {len(current_tickers)} stocks in '{selected_list}'")
 
-    st.sidebar.subheader("Current Watchlist")
-    watchlist = load_watchlist()
-    
-    if watchlist:
-        ticker_to_delete = st.sidebar.selectbox("Select to Delete", ["Select..."] + watchlist)
-        if ticker_to_delete != "Select...":
-            if st.sidebar.button("Delete"):
-                watchlist.remove(ticker_to_delete)
-                save_watchlist(watchlist)
-                st.sidebar.success(f"Deleted {ticker_to_delete}")
-                st.rerun()
-    else:
-        st.sidebar.info("Watchlist is empty.")
 
     # --- Sidebar: Saved Articles ---
     st.sidebar.divider()
@@ -361,8 +394,8 @@ def main():
     st.markdown(f"**Current Time (GMT+8):** {now_shanghai.strftime('%Y-%m-%d %H:%M:%S')}")
     st.divider()
 
-    if not watchlist:
-        st.info("Add stocks to sidebar to see the dashboard.")
+    if not current_tickers:
+        st.info("Select a watchlist from the sidebar to see the dashboard (or create a new one).")
         return
 
     # Check for new dependencies
@@ -373,13 +406,13 @@ def main():
         st.error("Missing libraries: `gnews` or `finvizfinance`. Please install them.")
         return
 
-    st.header("📰 Daily Briefing (Last 24h)")
+    st.header(f"📰 Daily Briefing: {selected_list}")
     
     # Combined Data Loading
     with st.spinner('Fetching aggregated news from Yahoo, Google, and FinViz...'):
         dashboard_data = [] # List of (ticker, price_data, recent_news, all_news)
         
-        for ticker in watchlist:
+        for ticker in current_tickers:
             price_data = get_stock_price_data(ticker)
             recent_news, all_news_items = get_aggregated_news(ticker)
             
